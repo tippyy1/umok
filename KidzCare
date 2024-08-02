@@ -1,0 +1,162 @@
+import streamlit as st
+import re
+from spellchecker import SpellChecker
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+print(torch.__version__)
+print(torch.cuda.is_available())  # This will return True if a compatible GPU is available and PyTorch can use it.
+
+# Set up the LLM
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
+model = AutoModelForCausalLM.from_pretrained("gpt2")
+
+st.set_page_config(page_title="KidzCareHub", page_icon="🏥", layout="wide")
+
+st.title("🌟 Welcome to KidzCareHub! 🌟")
+
+# Initialize chat history
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+spell = SpellChecker()
+
+def preprocess_input(text):
+    # Abbreviations dictionary (expanded)
+    abbreviations = {
+        "fvr": "fever",
+        "doc": "doctor",
+        "temp": "temperature",
+        "vax": "vaccination",
+        "meds": "medications",
+        "sym": "symptoms",
+        "dev": "development",
+        "nutri": "nutrition",
+        "allrg": "allergy",
+        "emrg": "emergency",
+    }
+    for abbr, full in abbreviations.items():
+        text = re.sub(r'\b' + re.escape(abbr) + r'\b', full, text, flags=re.IGNORECASE)
+    
+    # Correct spelling errors
+    words = text.split()
+    corrected_text = " ".join([spell.correction(word) if spell.unknown([word]) else word for word in words])
+    
+    # Handle curse words
+    curse_words = ["damn", "hell", "shit", "fuck"]  # Expanded list
+    for curse in curse_words:
+        corrected_text = re.sub(r'\b' + re.escape(curse) + r'\b', '****', corrected_text, flags=re.IGNORECASE)
+    
+    return corrected_text
+
+def generate_response(prompt):
+    inputs = tokenizer(prompt, return_tensors="pt")
+    with torch.no_grad():
+        outputs = model.generate(**inputs, max_length=150, num_return_sequences=1, temperature=0.7)
+    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return response
+
+# Display chat messages from history on app rerun
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# React to user input
+if prompt := st.chat_input("Ask a question about pediatric care"):
+    # Preprocess the input
+    preprocessed_prompt = preprocess_input(prompt)
+    
+    # Display user message in chat message container
+    st.chat_message("user").markdown(preprocessed_prompt)
+    # Add user message to chat history
+    st.session_state.messages.append({"role": "user", "content": preprocessed_prompt})
+
+    response = generate_response(preprocessed_prompt)
+    # Display assistant response in chat message container
+    with st.chat_message("assistant"):
+        st.markdown(f"KidzCareHub: {response}")
+    # Add assistant response to chat history
+    st.session_state.messages.append({"role": "assistant", "content": f"KidzCareHub: {response}"})
+
+# Sidebar with additional information
+st.sidebar.title("About KidzCareHub")
+st.sidebar.info(
+    "KidzCareHub is your comprehensive digital pediatric care assistant. "
+    "Ask questions about child health, development, nutrition, safety, and more. "
+    "Remember, this app provides general information and should not replace professional medical advice."
+)
+
+# Custom CSS for enhanced design
+st.markdown(
+    """
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700&display=swap');
+
+    .stApp {
+        background: linear-gradient(135deg, #FFD1DC 0%, #FFF0F5 100%);
+        font-family: 'Nunito', sans-serif;
+    }
+    h1 {
+        color: #FF1493;
+        text-align: center;
+        font-size: 3.5em;
+        margin-bottom: 30px;
+        text-shadow: 2px 2px 4px rgba(255,20,147,0.3);
+    }
+    .stChatMessage {
+        background-color: rgba(255, 255, 255, 0.9) !important;
+        border-radius: 20px !important;
+        padding: 20px !important;
+        margin-bottom: 20px !important;
+        box-shadow: 0 6px 12px rgba(255,20,147,0.2);
+        border: 3px solid #FF69B4;
+        transition: all 0.3s ease;
+    }
+    .stChatMessage:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 20px rgba(255,20,147,0.3);
+    }
+    .stChatMessage [data-testid="stChatMessageContent"] {
+        background-color: transparent !important;
+        color: #8B4513;
+        font-size: 1.2em;
+        line-height: 1.6;
+    }
+    .stChatMessage [data-testid="stChatMessageAvatar"] {
+        background-color: #FF1493 !important;
+    }
+    .stTextInput > div > div > input {
+        background-color: rgba(255, 255, 255, 0.95);
+        border-radius: 25px;
+        padding: 15px 25px;
+        font-size: 1.2em;
+        border: 3px solid #FF69B4;
+        transition: all 0.3s ease;
+    }
+    .stTextInput > div > div > input:focus {
+        border-color: #FF1493;
+        box-shadow: 0 0 15px rgba(255,20,147,0.5);
+    }
+    .stSidebar {
+        background-color: rgba(255, 192, 203, 0.3);
+        padding: 30px;
+        border-radius: 20px;
+    }
+    .stButton > button {
+        background-color: #FF1493;
+        color: white;
+        border-radius: 25px;
+        padding: 12px 25px;
+        font-size: 1.2em;
+        border: none;
+        box-shadow: 0 6px 12px rgba(255,20,147,0.3);
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover {
+        background-color: #FF69B4;
+        transform: translateY(-3px);
+        box-shadow: 0 10px 20px rgba(255,20,147,0.4);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
